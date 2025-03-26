@@ -6,143 +6,141 @@ const router = express.Router();
 const { connectToDatabase } = require('../models/db');
 const logger = require('../logger');
 
-// Define the upload directory path
+// Définition du répertoire d'upload
 const directoryPath = 'public/images';
 if (!fs.existsSync(directoryPath)) fs.mkdirSync(directoryPath, { recursive: true });
 
-// Set up storage for uploaded files
+// Configuration de multer avec validation du type de fichier
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, directoryPath);
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + '-' + file.originalname);
-  },
+    destination: (req, file, cb) => cb(null, directoryPath),
+    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
 });
-const upload = multer({ storage: storage });
+const fileFilter = (req, file, cb) => {
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+    if (allowedMimeTypes.includes(file.mimetype)) cb(null, true);
+    else cb(new Error('❌ Format de fichier non autorisé !'), false);
+};
+const upload = multer({ storage, fileFilter });
 
 /**
- * GET all secondChanceItems
+ * GET - Récupérer tous les items
  */
 router.get('/', async (req, res, next) => {
-  logger.info('/ called');
-  try {
-    const db = await connectToDatabase();                                // Step 2 Task 1
-    const collection = db.collection("secondChanceItems");               // Step 2 Task 2
-    const secondChanceItems = await collection.find({}).toArray();       // Step 2 Task 3
-    res.json(secondChanceItems);                                         // Step 2 Task 4
-  } catch (e) {
-    logger.error('Oops something went wrong', e);
-    next(e);
-  }
+    try {
+        console.log('Route GET /api/secondchance/ appelée');
+        const db = await connectToDatabase();
+        const collection = db.collection("secondChanceItems");
+
+        const secondChanceItems = await collection.find({}).toArray();
+        if (secondChanceItems.length === 0) {
+            return res.status(404).json({ error: 'Aucun élément trouvé' });
+        }
+        res.json(secondChanceItems);
+    } catch (e) {
+        logger.error('Erreur lors de la récupération des éléments:', e);
+        next(e);
+    }
 });
 
 /**
- * POST - Add a new item with image upload
+ * POST - Ajouter un nouvel item avec upload d'image
  */
 router.post('/', upload.single('file'), async (req, res, next) => {
   try {
-    const db = await connectToDatabase();                                // Step 3 Task 1
-    const collection = db.collection("secondChanceItems");               // Step 3 Task 2
+      const db = await connectToDatabase();
+      const collection = db.collection("secondChanceItems");
 
-    // Step 3 Task 3: Create new item from body
-    const newItem = {
-      name: req.body.name,
-      description: req.body.description,
-      price: req.body.price,
-      imageUrl: req.file ? `/images/${req.file.filename}` : null
-    };
+      // Vérification des entrées
+      const { name, description, price } = req.body;
+      if (!name || !description || !price) {
+          return res.status(400).json({ error: '❌ Tous les champs sont requis.' });
+      }
 
-    // Step 3 Task 4: Get last ID, increment
-    const lastItem = await collection.find().sort({ id: -1 }).limit(1).toArray();
-    newItem.id = lastItem.length > 0 ? lastItem[0].id + 1 : 1;
+      // Création de l'élément
+      const newItem = {
+          name,
+          description,
+          price: parseFloat(price),
+          imageUrl: req.file ? `/images/${req.file.filename}` : null,
+          createdAt: new Date()
+      };
 
-    // Step 3 Task 5: Add createdAt
-    newItem.createdAt = new Date();
+      // Générer un ID unique
+      const lastItem = await collection.find().sort({ id: -1 }).limit(1).toArray();
+      newItem.id = (lastItem.length > 0 && lastItem[0].id) ? lastItem[0].id + 1 : 1;
 
-    // Step 3 Task 6: Insert the new item
-    await collection.insertOne(newItem);
-    res.status(201).json(newItem);
+      // Insérer dans la base de données
+      await collection.insertOne(newItem);
+      res.status(201).json(newItem);
   } catch (e) {
-    logger.error('Error adding new item', e);
-    next(e);
+      console.error('❌ Erreur lors de l’ajout d’un nouvel item', e);
+      next(e);
   }
 });
 
-/**
- * GET a single secondChanceItem by ID
- */
-// routes/secondChanceItemsRoutes.js
 
-// Récupérer un item par ID
-router.get('/:id', async (req, res) => {
+/**
+ * GET - Récupérer un item par ID
+ */
+router.get('/:id', async (req, res, next) => {
     try {
-        console.log('ID reçu dans la requête:', req.params.id); // Affiche l'ID reçu
         const db = await connectToDatabase();
         const collection = db.collection('secondChanceItems');
 
-        // Recherche de l'élément par ID (en tant qu'entier)
         const item = await collection.findOne({ id: parseInt(req.params.id) });
+        if (!item) return res.status(404).json({ error: 'Item non trouvé' });
 
-        if (!item) {
-            console.log('Item non trouvé');
+        res.json(item);
+    } catch (error) {
+        logger.error('Erreur lors de la récupération de l’item', error);
+        next(error);
+    }
+});
+
+/**
+ * PUT - Mettre à jour un item existant
+ */
+router.put('/:id', async (req, res, next) => {
+    try {
+        const db = await connectToDatabase();
+        const collection = db.collection("secondChanceItems");
+
+        const updatedItem = await collection.findOneAndUpdate(
+            { id: parseInt(req.params.id) },
+            { $set: req.body },
+            { returnDocument: 'after' }
+        );
+
+        if (!updatedItem.value) {
             return res.status(404).json({ error: 'Item non trouvé' });
         }
 
-        console.log('Item trouvé:', item);
-        res.json(item); // Retourne l'élément trouvé
-    } catch (error) {
-        console.error('Erreur lors de la récupération de l’item:', error);
-        res.status(500).json({ error: 'Erreur lors de la récupération de l’item' });
+        res.json(updatedItem.value);
+    } catch (e) {
+        logger.error('Erreur lors de la mise à jour', e);
+        next(e);
     }
 });
 
-
-
 /**
- * PUT - Update an existing item
- */
-router.put('/:id', async (req, res, next) => {
-  try {
-    const db = await connectToDatabase();                                // Step 5 Task 1
-    const collection = db.collection("secondChanceItems");               // Step 5 Task 2
-
-    const updatedItem = await collection.findOneAndUpdate(
-      { id: parseInt(req.params.id) },                                   // Step 5 Task 3
-      { $set: req.body },                                                // Step 5 Task 4
-      { returnDocument: 'after' }
-    );
-
-    if (!updatedItem.value) {
-      return res.status(404).json({ error: 'Item non trouvé' });         // Step 5 Task 5
-    }
-
-    res.json(updatedItem.value);
-  } catch (e) {
-    logger.error('Error updating item', e);
-    next(e);
-  }
-});
-
-/**
- * DELETE - Delete an existing item
+ * DELETE - Supprimer un item
  */
 router.delete('/:id', async (req, res, next) => {
-  try {
-    const db = await connectToDatabase();                                // Step 6 Task 1
-    const collection = db.collection("secondChanceItems");               // Step 6 Task 2
+    try {
+        const db = await connectToDatabase();
+        const collection = db.collection("secondChanceItems");
 
-    const deletedItem = await collection.findOneAndDelete({ id: parseInt(req.params.id) }); // Step 6 Task 3
+        const deletedItem = await collection.findOneAndDelete({ id: parseInt(req.params.id) });
 
-    if (!deletedItem.value) {
-      return res.status(404).json({ error: 'Item non trouvé' });         // Step 6 Task 4
+        if (!deletedItem.value) {
+            return res.status(404).json({ error: 'Item non trouvé' });
+        }
+
+        res.json({ message: '✅ Item supprimé', deletedItem: deletedItem.value });
+    } catch (e) {
+        logger.error('Erreur lors de la suppression', e);
+        next(e);
     }
-
-    res.json({ message: 'Item supprimé', deletedItem: deletedItem.value });
-  } catch (e) {
-    logger.error('Error deleting item', e);
-    next(e);
-  }
 });
 
 module.exports = router;
