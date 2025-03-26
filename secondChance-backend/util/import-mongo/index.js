@@ -1,47 +1,45 @@
 require('dotenv').config();
-const MongoClient = require('mongodb').MongoClient;
+const { MongoClient } = require('mongodb');
 const fs = require('fs');
 
-// MongoDB connection URL with authentication options
-let url = `${process.env.MONGO_URL}`;
-let filename = `${__dirname}/secondChanceItems.json`;
+// Check if MONGO_URL is correctly loaded
+if (!process.env.MONGO_URL) {
+    console.error('❌ MONGO_URL not found in .env');
+    process.exit(1);
+}
+
+const url = process.env.MONGO_URL;
+const filename = `${__dirname}/secondChanceItems.json`;
 const dbName = 'secondChance';
 const collectionName = 'secondChanceItems';
 
-// notice you have to load the array of items into the data object
+// Load data from JSON file
 const data = JSON.parse(fs.readFileSync(filename, 'utf8')).docs;
 
-// connect to database and insert data into the collection
 async function loadData() {
     const client = new MongoClient(url);
 
     try {
-        // Connect to the MongoDB client
         await client.connect();
-        console.log("Connected successfully to server");
+        console.log("✅ Connected successfully to MongoDB");
 
-        // database will be created if it does not exist
         const db = client.db(dbName);
-
-        // collection will be created if it does not exist
         const collection = db.collection(collectionName);
-        let cursor = await collection.find({});
-        let documents = await cursor.toArray();
+        const documents = await collection.find({}).toArray();
 
-        if(documents.length == 0) {
-            // Insert data into the collection
+        if (documents.length === 0) {
             const insertResult = await collection.insertMany(data);
-            console.log('Inserted documents:', insertResult.insertedCount);
+            console.log(`✅ Inserted ${insertResult.insertedCount} documents`);
         } else {
-            console.log("Items already exists in DB")
+            console.log("ℹ️ Items already exist in DB");
         }
     } catch (err) {
-        console.error(err);
+        console.error('❌ Error:', err);
     } finally {
-        // Close the connection
         await client.close();
     }
 }
+
 
 loadData();
 

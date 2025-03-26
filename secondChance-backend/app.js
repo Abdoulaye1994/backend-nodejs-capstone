@@ -1,64 +1,57 @@
-/*jshint esversion: 8 */
+// app.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const pinoLogger = require('./logger');
+const authRoutes = require('./routes/authRoutes'); // Assurez-vous que le chemin est correct
 
-const connectToDatabase = require('./models/db');
-const {loadData} = require("./util/import-mongo/index");
-
+const { connectToDatabase } = require('./models/db');
+const { loadData } = require("./util/import-mongo/index");
 
 const app = express();
-app.use("*",cors());
+app.use("*", cors());
 const port = 3060;
 
-// Connect to MongoDB; we just do this one time
+// Connect to MongoDB
 connectToDatabase().then(() => {
-    pinoLogger.info('Connected to DB');
-})
-    .catch((e) => console.error('Failed to connect to DB', e));
-
+    console.log('✅ Connected to DB');
+}).catch((e) => {
+    console.error('❌ Failed to connect to DB', e);
+});
 
 app.use(express.json());
 
-// Route files
+// ✅ Route files imports
+// Auth Routes
+app.use('/api/auth', authRoutes); // Assurez-vous que ce fichier existe et fonctionne
 
-// authRoutes Step 2: import the authRoutes and store in a constant called authRoutes
-//{{insert code here}}
+// Items API Routes
+const secondChanceItemsRoutes = require('./routes/secondChanceItemsRoutes');
 
-// Items API Task 1: import the secondChanceItemsRoutes and store in a constant called secondChanceItemsRoutes
-//{{insert code here}}
+// Search API Routes
+const searchRoutes = require('./routes/searchRoutes'); // Assurez-vous que ce fichier existe
 
-// Search API Task 1: import the searchRoutes and store in a constant called searchRoutes
-//{{insert code here}}
-
-
+// Logging
 const pinoHttp = require('pino-http');
 const logger = require('./logger');
-
 app.use(pinoHttp({ logger }));
 
-// Use Routes
-// authRoutes Step 2: add the authRoutes and to the server by using the app.use() method.
-//{{insert code here}}
+// ✅ Use Routes
+app.use('/api/secondchance', secondChanceItemsRoutes); // Items CRUD routes
+app.use('/api/search', searchRoutes); // Search route
 
-// Items API Task 2: add the secondChanceItemsRoutes to the server by using the app.use() method.
-//{{insert code here}}
-
-// Search API Task 2: add the searchRoutes to the server by using the app.use() method.
-//{{insert code here}}
-
-
-// Global Error Handler
+// ✅ Global Error Handler
 app.use((err, req, res, next) => {
     console.error(err);
     res.status(500).send('Internal Server Error');
 });
 
-app.get("/",(req,res)=>{
-    res.send("Inside the server")
-})
+// ✅ Default Route
+app.get("/", (req, res) => {
+    res.send("✅ API SecondChance Backend en ligne 🚀");
+});
 
+// ✅ Start Server
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+    console.log(`🚀 Serveur démarré sur http://localhost:${port}`);
 });
